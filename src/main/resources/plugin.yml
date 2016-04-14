@@ -1,0 +1,6 @@
+name: EmptyPlotFinder
+main: com.samistine.emptyplotfinder.Main
+version: 0.1
+description: Find empty plots
+author: Samistine
+depend: [PlotMe]

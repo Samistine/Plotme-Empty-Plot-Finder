@@ -1,0 +1,222 @@
+	@EventHandler(priority = EventPriority.HIGHEST)
+	public void onPlayerCommandPreprocess(PlayerCommandPreprocessEvent event) {
+		// if (!plotClearPattern.matcher(event.getMessage()).find()) {
+		// return;
+		// }
+//		String randpass = Main.getRandomPassword();
+//		String cmdsam = event.getMessage().toLowerCase();
+		if (event.getMessage().equalsIgnoreCase("/p clear")
+				|| event.getMessage().equalsIgnoreCase("/plot clear")
+				|| event.getMessage().equalsIgnoreCase("/plotme clear")) {
+			event.setCancelled(true);
+			String msgconfirm = "&4&lARE YOU SURE YOU WANT TO PERMENANTLY DELETE ALL DATA FROM THIS PLOT?";
+			String msgconfirm2 = "&4&lALL DATA FROM THIS PLOT WILL BE LOST";
+//			String msgconfirm3 = "&4&lIF YOU ARE COMPLETLY SURE DO &2&l/p clear confirm "
+//					+ randpass;
+			String msgconfirm3 = "&4&lIF YOU ARE COMPLETLY SURE DO &2&l/p clear confirm yes";
+			String msgplayertoconfirm = ChatColor.translateAlternateColorCodes(
+					'&', msgconfirm);
+			String msgplayertoconfirm2 = ChatColor
+					.translateAlternateColorCodes('&', msgconfirm2);
+			String msgplayertoconfirm3 = ChatColor
+					.translateAlternateColorCodes('&', msgconfirm3);
+			event.getPlayer().sendMessage(msgplayertoconfirm);
+			event.getPlayer().sendMessage(msgplayertoconfirm2);
+			event.getPlayer().sendMessage(msgplayertoconfirm3);
+			return;
+		}
+		if (event.getMessage().toLowerCase().startsWith("/p clear confirm")) {
+			event.setCancelled(true);
+			if (!event.getMessage().endsWith(randpass)) {
+				event.getPlayer().sendMessage("Invalid Key");
+				return;
+			}
+			if (event.getMessage().endsWith(randpass)) {
+
+				event.setCancelled(true);
+				Player player = event.getPlayer();
+				if (!player.hasPermission("PlotMeFix.clear")) { //changed
+					player.sendMessage(PlotMe.PREFIX + ChatColor.RED
+							+ PlotMe.caption("MsgPermissionDenied"));
+					return;
+				}
+
+				if (!PlotManager.isPlotWorld(player)) {
+					player.sendMessage(PlotMe.PREFIX + ChatColor.RED
+							+ PlotMe.caption("MsgNotPlotWorld"));
+					return;
+				}
+
+				String plotId = PlotManager.getPlotId(player.getLocation());
+
+				if (plotId == null || plotId.isEmpty()) {
+					player.sendMessage(PlotMe.PREFIX + ChatColor.RED
+							+ PlotMe.caption("MsgNoPlotFound"));
+					return;
+				}
+
+				if (PlotManager.isPlotAvailable(plotId, player)) {
+					// player.sendMessage(ChatUtils.format("%s&c%s(%s) %s",
+					// PlotMe.PREFIX, PlotMe.caption("MsgThisPlot"), plotId,
+					// PlotMe.caption("MsgHasNoOwner")));
+					player.sendMessage(PlotMe.PREFIX
+							+ PlotMe.caption("MsgThisPlot") + plotId
+							+ PlotMe.caption("MsgHasNoOwner"));
+					return;
+				}
+				Plot plot = PlotManager.getPlotById(player, plotId);
+
+				if (plot.protect) {
+					player.sendMessage(PlotMe.PREFIX + ChatColor.RED
+							+ PlotMe.caption("MsgPlotProtectedCannotClear"));
+					return;
+				}
+
+				if (!plot.owner.equalsIgnoreCase(player.getName())
+						&& !PlotMe.cPerms(player, "PlotMe.admin.clear")) {
+					// player.sendMessage(ChatUtils.format("%s&c%s(%s) %s",
+					// PlotMe.PREFIX, PlotMe.caption("MsgThisPlot"), plotId,
+					// PlotMe.caption("MsgNotYoursNotAllowedClear")));
+					player.sendMessage(PlotMe.PREFIX
+							+ PlotMe.caption("MsgThisPlot") + plotId
+							+ PlotMe.caption("MsgNotYoursNotAllowedClear"));
+					return;
+				}
+				final UUID playerId = player.getUniqueId(); // java import,
+															// idk
+															// if
+															// its suppose
+															// to be
+															// bukkit
+				final World world = player.getWorld();
+				Location top = PlotManager.getTop(world, plot);
+				Location bottom = PlotManager.getBottom(world, plot);
+				final PlotMapInfo plotMapInfo = PlotManager.getMap(bottom);
+				final Queue<Location> blocks = new ConcurrentLinkedQueue<>(); // more
+																				// java
+																				// imports
+
+				final int bottomX = bottom.getBlockX();
+				final int topX = top.getBlockX();
+				final int bottomZ = bottom.getBlockZ();
+				final int topZ = top.getBlockZ();
+
+				int minChunkX = (int) Math.floor((double) bottomX / 16);
+				int maxChunkX = (int) Math.floor((double) topX / 16);
+				int minChunkZ = (int) Math.floor((double) bottomZ / 16);
+				int maxChunkZ = (int) Math.floor((double) topZ / 16);
+
+				for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+					for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+						Chunk chunk = world.getChunkAt(cx, cz);
+
+						for (Entity entity : chunk.getEntities()) {
+							Location entityLocation = entity.getLocation();
+
+							if (!(entity instanceof Player)
+									&& entityLocation.getBlockX() >= bottom
+											.getBlockX()
+									&& entityLocation.getBlockX() <= top
+											.getBlockX()
+									&& entityLocation.getBlockZ() >= bottom
+											.getBlockZ()
+									&& entityLocation.getBlockZ() <= top
+											.getBlockZ()) {
+
+								entity.remove();
+							}
+						}
+					}
+				}
+				final BukkitTask blockFindTask = new BukkitRunnable() {
+					@Override
+					public void run() {
+						for (int x = bottomX; x <= topX; x++) {
+							for (int z = bottomZ; z <= topZ; z++) {
+								for (int y = 0; y < world.getMaxHeight(); ++y) {
+									Location location = new Location(world, x,
+											y, z);
+
+									if (location.getBlockY() == 0) {
+										if (location.getBlock().getTypeId() != plotMapInfo.BottomBlockId
+												|| location.getBlock()
+														.getData() != plotMapInfo.BottomBlockValue) {
+
+											blocks.add(location);
+										}
+									} else if (location.getBlockY() < plotMapInfo.RoadHeight) {
+										if (location.getBlock().getTypeId() != plotMapInfo.PlotFillingBlockId
+												|| location.getBlock()
+														.getData() != plotMapInfo.PlotFillingBlockValue) {
+
+											blocks.add(location);
+										}
+									} else if (location.getBlockY() == plotMapInfo.RoadHeight) {
+										if (location.getBlock().getTypeId() != plotMapInfo.PlotFloorBlockId
+												|| location.getBlock()
+														.getData() != plotMapInfo.PlotFloorBlockValue) {
+
+											blocks.add(location);
+										}
+									} else if (location.getBlock().getType() != Material.AIR) {
+										blocks.add(location);
+									}
+								}
+							}
+						}
+					}
+				}.runTaskAsynchronously((Plugin) this); // changed
+				new BukkitRunnable() {
+					@Override
+					public void run() {
+						// int blocksPerTick =
+						// getConfig().getInt("clear-queue.blocks-per-tick");
+						int blocksPerTick = 50;
+						Location location;
+
+						for (int i = 0; i < blocksPerTick
+								&& (location = blocks.poll()) != null; ++i) {
+							if (!location.getChunk().isLoaded()) {
+								location.getChunk().load(true);
+							}
+
+							if (location.getBlockY() == 0) {
+								location.getBlock().setTypeIdAndData(
+										plotMapInfo.BottomBlockId,
+										plotMapInfo.BottomBlockValue, false);
+							} else if (location.getBlockY() < plotMapInfo.RoadHeight) {
+								location.getBlock().setTypeIdAndData(
+										plotMapInfo.PlotFillingBlockId,
+										plotMapInfo.PlotFillingBlockValue,
+										false);
+							} else if (location.getBlockY() == plotMapInfo.RoadHeight) {
+								location.getBlock().setTypeIdAndData(
+										plotMapInfo.PlotFloorBlockId,
+										plotMapInfo.PlotFloorBlockValue, false);
+							} else if (location.getBlock().getType() != Material.AIR) {
+								location.getBlock().setTypeIdAndData(0,
+										(byte) 0, false);
+							}
+						}
+
+						if (blocks.isEmpty()
+								&& !Bukkit.getScheduler().isCurrentlyRunning(
+										blockFindTask.getTaskId())
+								&& !Bukkit.getScheduler().isQueued(
+										blockFindTask.getTaskId())) {
+
+							cancel();
+
+							Player player = Bukkit.getPlayer(playerId);
+
+							if (player != null) {
+								player.sendMessage(PlotMe.PREFIX
+										+ PlotMe.caption("MsgPlotCleared"));
+							}
+						}
+					}
+				}.runTaskTimer((Plugin) this, 1, 1); // changed
+			}
+		}
+	}
+}
